@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sanco's Great Escape</title>
+    <style>
+        body { margin: 0; background: #222; overflow: hidden; font-family: 'Arial', sans-serif; color: white; }
+        canvas { display: block; background: linear-gradient(#87CEEB, #228B22); }
+        
+        #ui { position: absolute; top: 20px; left: 20px; font-size: 24px; font-weight: bold; text-shadow: 2px 2px #000; }
+        
+        #game-over {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9); padding: 30px; border: 3px solid #ff0000;
+            border-radius: 15px; text-align: center; display: none; width: 350px;
+        }
+        .btn { display: block; width: 100%; padding: 15px; margin: 10px 0; font-weight: bold; text-decoration: none; border-radius: 8px; cursor: pointer; border: none; font-size: 16px; box-sizing: border-box; }
+        .yt-btn { background: #ff0000; color: white; }
+        .esofa-btn { background: #d4af37; color: black; }
+        .retry-btn { background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+<div id="ui">DISTANCE: <span id="dist">0</span>m | NOTES: <span id="notes">0</span></div>
+
+<div id="game-over">
+    <h1 style="color:#ff0000; margin-top:0;">OUT OF BREATH!</h1>
+    <p id="final-stats"></p>
+    <p style="color:#aaa;">Check out the adventurers who do this for real:</p>
+    
+    <a class="btn yt-btn" href="https://www.youtube.com/@SancoOutdoors" target="_blank">🎬 SUB TO SANCO OUTDOORS</a>
+    <a class="btn esofa-btn" href="https://www.sanangelogives.org/organization/emmanuelschooloffinearts" target="_blank">🎻 SUPPORT ESOFA SCHOOL</a>
+    
+    <button class="btn retry-btn" onclick="location.reload()">TRY AGAIN</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let score = 0;
+let notesCollected = 0;
+let gameActive = true;
+let speed = 7;
+
+const player = { x: 100, y: canvas.height - 150, w: 40, h: 60, dy: 0, jump: -15, ground: canvas.height - 150 };
+const obstacles = [];
+const collectibles = [];
+
+// Controls
+window.addEventListener('keydown', (e) => {
+    if ((e.code === 'Space' || e.code === 'ArrowUp') && player.y === player.ground) {
+        player.dy = player.jump;
+    }
+});
+canvas.addEventListener('touchstart', () => {
+    if (player.y === player.ground) player.dy = player.jump;
+});
+
+function spawn() {
+    if (!gameActive) return;
+    // Spawn Obstacle (Rocks/Bushes)
+    if (Math.random() < 0.02) {
+        obstacles.push({ x: canvas.width, y: canvas.height - 100, w: 40, h: 50 });
+    }
+    // Spawn Harmony Note
+    if (Math.random() < 0.01) {
+        collectibles.push({ x: canvas.width, y: canvas.height - 250, r: 15 });
+    }
+    setTimeout(spawn, 100);
+}
+
+function update() {
+    if (!gameActive) return;
+
+    score++;
+    speed += 0.001;
+    document.getElementById('dist').innerText = Math.floor(score/10);
+    document.getElementById('notes').innerText = notesCollected;
+
+    // Physics
+    player.dy += 0.8; // Gravity
+    player.y += player.dy;
+    if (player.y > player.ground) {
+        player.y = player.ground;
+        player.dy = 0;
+    }
+
+    // Move Obstacles
+    obstacles.forEach((obs, i) => {
+        obs.x -= speed;
+        // Collision
+        if (player.x < obs.x + obs.w && player.x + player.w > obs.x && player.y + player.h > obs.y) {
+            endGame();
+        }
+        if (obs.x < -50) obstacles.splice(i, 1);
+    });
+
+    // Move Collectibles
+    collectibles.forEach((note, i) => {
+        note.x -= speed;
+        let dx = (player.x + player.w/2) - note.x;
+        let dy = (player.y + player.h/2) - note.y;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < 40) {
+            notesCollected++;
+            collectibles.splice(i, 1);
+        }
+        if (note.x < -50) collectibles.splice(i, 1);
+    });
+
+    draw();
+    requestAnimationFrame(update);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Ground
+    ctx.fillStyle = '#3d2b1f';
+    ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+
+    // Draw Player (Simple stick adventurer)
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(player.x + 20, player.y + 10, 10, 0, Math.PI*2); // Head
+    ctx.moveTo(player.x + 20, player.y + 20); ctx.lineTo(player.x + 20, player.y + 45); // Body
+    ctx.moveTo(player.x + 20, player.y + 25); ctx.lineTo(player.x + 5, player.y + 35); // Arm
+    ctx.moveTo(player.x + 20, player.y + 45); ctx.lineTo(player.x + 5, player.y + 60); // Leg
+    ctx.stroke();
+
+    // Draw Obstacles
+    ctx.fillStyle = '#555';
+    obstacles.forEach(obs => ctx.fillRect(obs.x, obs.y, obs.w, obs.h));
+
+    // Draw Notes
+    ctx.fillStyle = '#d4af37';
+    collectibles.forEach(note => {
+        ctx.beginPath();
+        ctx.arc(note.x, note.y, note.r, 0, Math.PI*2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.fillText('♪', note.x - 5, note.y + 5);
+        ctx.fillStyle = '#d4af37';
+    });
+}
+
+function endGame() {
+    gameActive = false;
+    document.getElementById('final-stats').innerText = `Distance: ${Math.floor(score/10)}m | Notes: ${notesCollected}`;
+    document.getElementById('game-over').style.display = 'block';
+}
+
+spawn();
+update();
+</script>
+</body>
+</html>
