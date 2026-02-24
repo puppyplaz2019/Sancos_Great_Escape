@@ -3,191 +3,162 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sanco's Great Escape - Mobile Edition</title>
+    <title>Sanco's Great Escape: Money Maker</title>
     <style>
-        body { margin: 0; background: #222; overflow: hidden; font-family: 'Courier New', Courier, monospace; color: white; touch-action: none; user-select: none; -webkit-user-select: none; }
-        canvas { display: block; background: #87CEEB; }
-        #ui { position: absolute; top: 20px; left: 20px; font-size: clamp(14px, 4vw, 20px); font-weight: bold; text-shadow: 2px 2px #000; pointer-events: none; z-index: 10; }
-        #game-over {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.95); padding: 20px; border: 4px solid #d4af37;
-            text-align: center; display: none; width: 85%; max-width: 380px; box-shadow: 0 0 20px #000; z-index: 100;
-        }
-        .btn { display: block; width: 100%; padding: 15px; margin: 10px 0; font-weight: bold; text-decoration: none; cursor: pointer; border: none; font-size: 16px; text-transform: uppercase; box-sizing: border-box; }
-        .yt-btn { background: #ff0000; color: white; }
-        .esofa-btn { background: #d4af37; color: black; }
-        .retry-btn { background: #555; color: #fff; margin-top: 20px; }
-        .sponsor-text { font-size: 12px; color: #aaa; margin: 10px 0 5px 0; font-style: italic; }
+        body { margin: 0; background: #222; overflow: hidden; font-family: 'Courier New', monospace; touch-action: none; }
+        canvas { display: block; background: linear-gradient(#001, #003); }
+        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; font-size: 20px; pointer-events: none; }
+        #note-ui { position: absolute; top: 40px; left: 10px; color: #d4af37; font-size: 20px; pointer-events: none; }
     </style>
 </head>
 <body>
 
-<div id="ui">
-    DIST: <span id="dist">0</span>m | BEST: <span id="best">0</span>m<br>
-    NOTES: <span id="notes">0</span>
-</div>
-
-<div id="game-over">
-    <h1 style="color:#d4af37; margin-top:0; font-size: 24px;">RESCUE NEEDED!</h1>
-    <p id="final-stats"></p>
-    <p class="sponsor-text">Watch the real pros:</p>
-    <a class="btn yt-btn" href="https://www.youtube.com/@SancoOutdoors" target="_blank">🎬 SUB TO SANCO</a>
-    <p class="sponsor-text">Support the school:</p>
-    <a class="btn esofa-btn" href="https://www.sanangelogives.org/organization/emmanuelschooloffinearts" target="_blank">🎻 TIP ESOFA</a>
-    <button class="btn retry-btn" onclick="location.reload()">RETRY</button>
-</div>
-
-<canvas id="gameCanvas"></canvas>
+<div id="ui">DISTANCE: 0m</div>
+<div id="note-ui">NOTES: 0 ♪</div>
 
 <script>
-const canvas = document.getElementById('gameCanvas');
+const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
+document.body.appendChild(canvas);
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// --- CONNECTED DATA ---
+const playerColor = localStorage.getItem('active_skin_hex') || '#0f0';
+let totalNotes = parseInt(localStorage.getItem('notes_collected') || 0);
 
 let score = 0;
-let notesCollected = 0;
+let notesInRun = 0;
 let gameActive = true;
-let speed = 8;
-let frame = 0;
-let highScore = localStorage.getItem('sanco_best') || 0;
+const gravity = 0.8;
 
-let groundY;
-let player = { x: 50, y: 0, w: 40, h: 60, dy: 0, jump: -16, onGround: false };
+const player = {
+    x: 50,
+    y: canvas.height - 100,
+    w: 30,
+    h: 50,
+    dy: 0,
+    jumpForce: -15,
+    grounded: false
+};
+
 const obstacles = [];
 const notes = [];
 
-function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    groundY = canvas.height - 100;
-    player.x = canvas.width > 600 ? 80 : 40; // Shift player right on bigger screens
-}
-window.addEventListener('resize', resize);
-resize();
-
-// --- INPUTS ---
-
-// Keyboard
-window.addEventListener('keydown', (e) => {
-    if ((e.code === 'Space' || e.code === 'ArrowUp')) handleJump();
-});
-
-// Mobile Tap
-window.addEventListener('touchstart', (e) => {
-    // Check if the game is active and user didn't tap a button in the game-over screen
-    if (gameActive) {
-        e.preventDefault();
-        handleJump();
-    }
-}, { passive: false });
-
-function handleJump() {
-    if (player.onGround) {
-        player.dy = player.jump;
-        player.onGround = false;
-    }
-}
-
-// --- GAME LOGIC ---
-
-function drawExplorer(x, y) {
-    ctx.fillStyle = "#ffdbac"; ctx.fillRect(x + 10, y, 20, 20); 
-    ctx.fillStyle = "#5d4037"; ctx.fillRect(x + 5, y, 30, 5); ctx.fillRect(x + 10, y - 5, 20, 10);
-    ctx.fillStyle = "#2e7d32"; ctx.fillRect(x + 8, y + 20, 24, 25);
-    ctx.fillStyle = "#3e2723"; 
-    let walk = Math.sin(frame * 0.2) * 5;
-    ctx.fillRect(x + 8, y + 45, 10, 15 + walk); ctx.fillRect(x + 22, y + 45, 10, 15 - walk);
-}
-
-function spawn() {
+function spawnObstacle() {
     if (!gameActive) return;
-    if (Math.random() < 0.025) {
-        let rand = Math.random();
-        if (rand < 0.2) obstacles.push({ x: canvas.width, y: groundY - 80, w: 30, h: 80, type: 'tree' });
-        else if (rand < 0.35) obstacles.push({ x: canvas.width, y: groundY - 140, w: 40, h: 20, type: 'bird' });
-        else if (rand < 0.5) obstacles.push({ x: canvas.width, y: groundY, w: 80, h: 20, type: 'water' });
-        else if (rand < 0.65) obstacles.push({ x: canvas.width, y: groundY - 50, w: 60, h: 50, type: 'tent' });
-        else if (rand < 0.8) obstacles.push({ x: canvas.width, y: groundY - 30, w: 40, h: 30, type: 'fire' });
-        else obstacles.push({ x: canvas.width, y: groundY - 200, w: 60, h: 15, type: 'branch' });
-    }
-    if (Math.random() < 0.01) notes.push({ x: canvas.width, y: groundY - 180, r: 12 });
-    setTimeout(spawn, 100);
+    obstacles.push({ x: canvas.width, w: 40, h: 40 + Math.random() * 40, speed: 7 + (score/1000) });
+    setTimeout(spawnObstacle, 1500 - (score/500));
+}
+
+// BUFFED NOTE SPAWNING: Bigger and more frequent
+function spawnNote() {
+    if (!gameActive) return;
+    notes.push({ 
+        x: canvas.width, 
+        y: canvas.height - 100 - Math.random() * 200, 
+        size: 25, // Increased size
+        speed: 5 
+    });
+    // Spawns every 1-2 seconds instead of 3-5
+    setTimeout(spawnNote, 1000 + Math.random() * 1000); 
 }
 
 function update() {
     if (!gameActive) return;
-    frame++; score++; speed += 0.002;
-    document.getElementById('dist').innerText = Math.floor(score/10);
-    document.getElementById('best').innerText = Math.floor(highScore/10);
-    document.getElementById('notes').innerText = notesCollected;
 
-    player.dy += 0.8; player.y += player.dy;
-    if (player.y > groundY - player.h) { 
-        player.y = groundY - player.h; 
-        player.dy = 0; 
-        player.onGround = true; 
+    score++;
+    document.getElementById('ui').innerText = `DISTANCE: ${Math.floor(score/10)}m`;
+
+    player.dy += gravity;
+    player.y += player.dy;
+
+    if (player.y + player.h > canvas.height - 50) {
+        player.y = canvas.height - 50 - player.h;
+        player.dy = 0;
+        player.grounded = true;
     }
 
+    // Update Obstacles
     obstacles.forEach((obs, i) => {
-        obs.x -= speed;
-        if (obs.type === 'water') {
-            if (player.x + 20 > obs.x && player.x + 20 < obs.x + obs.w && player.y >= groundY - player.h) endGame();
-        } else {
-            if (player.x < obs.x + obs.w - 5 && player.x + player.w - 5 > obs.x && player.y < obs.y + obs.h && player.y + player.h > obs.y) endGame();
+        obs.x -= obs.speed;
+        if (obs.x + obs.w < 0) obstacles.splice(i, 1);
+        if (player.x < obs.x + obs.w && player.x + player.w > obs.x && player.y < canvas.height - 50 && player.y + player.h > canvas.height - 50 - obs.h) {
+            gameOver();
         }
-        if (obs.x < -150) obstacles.splice(i, 1);
     });
 
+    // Update Notes
     notes.forEach((n, i) => {
-        n.x -= speed;
-        if (Math.abs(player.x - n.x) < 40 && Math.abs(player.y - n.y) < 60) { notesCollected++; notes.splice(i, 1); }
+        n.x -= n.speed;
+        if (n.x + n.size < 0) notes.splice(i, 1);
+        
+        // Better hitbox for bigger notes
+        if (player.x < n.x + n.size && player.x + player.w > n.x && player.y < n.y + n.size && player.y + player.h > n.y) {
+            notes.splice(i, 1);
+            notesInRun++;
+            totalNotes++;
+            localStorage.setItem('notes_collected', totalNotes); // SAVE TO HUB
+            document.getElementById('note-ui').innerText = `NOTES: ${notesInRun} ♪`;
+        }
     });
+
     draw();
     requestAnimationFrame(update);
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Ground
-    ctx.fillStyle = '#228B22'; ctx.fillRect(0, groundY, canvas.width, 100);
-    
-    drawExplorer(player.x, player.y);
 
+    // Floor
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+
+    // Player (uses Hub Skin)
+    ctx.fillStyle = playerColor;
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+
+    // Obstacles
+    ctx.fillStyle = '#f00';
     obstacles.forEach(obs => {
-        if (obs.type === 'tree') {
-            ctx.fillStyle = '#5d4037'; ctx.fillRect(obs.x + 10, obs.y + 40, 10, 40);
-            ctx.fillStyle = '#1b5e20'; ctx.beginPath(); ctx.moveTo(obs.x-10, obs.y+45); ctx.lineTo(obs.x+15, obs.y); ctx.lineTo(obs.x+40, obs.y+45); ctx.fill();
-        } else if (obs.type === 'bird') {
-            ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.beginPath(); let wng = Math.sin(frame*0.3)*10;
-            ctx.moveTo(obs.x, obs.y); ctx.lineTo(obs.x+20, obs.y+wng); ctx.lineTo(obs.x+40, obs.y); ctx.stroke();
-        } else if (obs.type === 'water') {
-            ctx.fillStyle = '#00ffff'; ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-        } else if (obs.type === 'tent') {
-            ctx.fillStyle = '#e67e22'; ctx.beginPath(); ctx.moveTo(obs.x, obs.y+50); ctx.lineTo(obs.x+30, obs.y); ctx.lineTo(obs.x+60, obs.y+50); ctx.fill();
-            ctx.fillStyle = '#d35400'; ctx.fillRect(obs.x+25, obs.y+30, 10, 20);
-        } else if (obs.type === 'fire') {
-            ctx.fillStyle = '#5d4037'; ctx.fillRect(obs.x, obs.y+20, 40, 10);
-            ctx.fillStyle = (frame % 10 < 5) ? '#ff4500' : '#ff8c00';
-            ctx.beginPath(); ctx.moveTo(obs.x+10, obs.y+20); ctx.lineTo(obs.x+20, obs.y); ctx.lineTo(obs.x+30, obs.y+20); ctx.fill();
-        } else if (obs.type === 'branch') {
-            ctx.fillStyle = '#5d4037'; ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-        }
+        ctx.fillRect(obs.x, canvas.height - 50 - obs.h, obs.w, obs.h);
     });
 
-    ctx.fillStyle = '#d4af37';
-    notes.forEach(n => { ctx.font = "24px Arial"; ctx.fillText("♪", n.x, n.y); });
+    // Notes (Glowing and Gold)
+    notes.forEach(n => {
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "gold";
+        ctx.fillStyle = "#f1c40f";
+        ctx.font = `${n.size}px Arial`;
+        ctx.fillText("♪", n.x, n.y);
+        ctx.shadowBlur = 0;
+    });
 }
 
-function endGame() {
+function gameOver() {
     gameActive = false;
-    if (score > highScore) { 
-        highScore = score;
-        localStorage.setItem('sanco_best', highScore); 
-    }
-    document.getElementById('final-stats').innerText = `DIST: ${Math.floor(score/10)}m | NOTES: ${notesCollected}`;
-    document.getElementById('game-over').style.display = 'block';
+    // Save high score
+    const best = localStorage.getItem('sanco_best') || 0;
+    if (score > best) localStorage.setItem('sanco_best', score);
+
+    alert(`GAME OVER\nDistance: ${Math.floor(score/10)}m\nNotes Collected: ${notesInRun}\nTotal for Shop: ${totalNotes}`);
+    window.location.href = 'index.html'; // Direct back to Hub
 }
 
-spawn();
+// Controls
+function jump() {
+    if (player.grounded) {
+        player.dy = player.jumpForce;
+        player.grounded = false;
+    }
+}
+
+window.addEventListener('keydown', (e) => { if(e.code === 'Space' || e.code === 'ArrowUp') jump(); });
+window.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); });
+
+spawnObstacle();
+spawnNote();
 update();
 </script>
 </body>
