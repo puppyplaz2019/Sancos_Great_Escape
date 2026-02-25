@@ -24,8 +24,9 @@ document.body.appendChild(canvas);
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-// --- CONNECTED DATA ---
+// --- CONNECTED DATA & RAINBOW LOGIC ---
 const playerColor = localStorage.getItem('active_skin_hex') || '#0f0';
+const isRainbow = (playerColor === 'rainbow');
 let totalNotes = parseInt(localStorage.getItem('notes_collected') || 0);
 
 let score = 0;
@@ -115,8 +116,13 @@ function draw() {
     ctx.fillStyle = '#333';
     ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
 
-    // Player (uses Hub Skin)
-    ctx.fillStyle = playerColor;
+    // --- PLAYER DRAWING (WITH RAINBOW SUPPORT) ---
+    if (isRainbow) {
+        const hue = (Date.now() % 2000) / 2000 * 360; // Cycles 0-360 every 2 seconds
+        ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+    } else {
+        ctx.fillStyle = playerColor;
+    }
     ctx.fillRect(player.x, player.y, player.w, player.h);
 
     // Obstacles
@@ -132,7 +138,7 @@ function draw() {
         ctx.fillStyle = "#f1c40f";
         ctx.font = `${n.size}px Arial`;
         ctx.fillText("♪", n.x, n.y);
-        ctx.shadowBlur = 0;
+        ctx.shadowBlur = 0; // Reset shadow so it doesn't bleed to other elements
     });
 }
 
@@ -155,7 +161,7 @@ function jump() {
 }
 
 window.addEventListener('keydown', (e) => { if(e.code === 'Space' || e.code === 'ArrowUp') jump(); });
-window.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); });
+window.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); }, { passive: false });
 
 spawnObstacle();
 spawnNote();
